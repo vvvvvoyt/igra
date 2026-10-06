@@ -37,7 +37,7 @@ canvas{width:100%;height:auto;border-radius:22px;display:block;touch-action:none
   <section id="start">
     <h1>к тебе тепло</h1>
     <div class="sub">игра студии эпиляции</div>
-    <p style="margin-top:16px">Девушка с лазером бежит сама. Касайтесь экрана или жмите пробел, чтобы прыгнуть. Собирайте волоски, запрыгивайте на ступеньки, перепрыгивайте канавы и бритвы. Бегущую бритву можно раздавить прыжком сверху: это +2 волоска.</p>
+    <p style="margin-top:16px">Девушка с лазером бежит сама. Касайтесь экрана или жмите пробел, чтобы прыгнуть. Собирайте волоски, запрыгивайте на ступеньки, перепрыгивайте канавы и бритвы. Любую бритву можно раздавить прыжком сверху: это +2 волоска.</p>
     <div class="card" style="margin-top:16px">
       <b>Бонусы за волоски</b>
       <div class="tiers" id="tiers"></div>
@@ -48,7 +48,7 @@ canvas{width:100%;height:auto;border-radius:22px;display:block;touch-action:none
       <div class="err" id="err" role="alert"></div>
       <button id="go">Бежать</button>
     </div>
-    <p class="note" style="margin-top:10px">Одна игра после каждого визита.</p>
+    <p class="note" style="margin-top:10px">5 попыток после каждого визита, засчитывается лучший результат.</p>
   </section>
 
   <section id="play" class="hidden"><canvas id="cv" width="360" height="480" aria-label="Игра: девушка с лазером бежит и собирает волоски"></canvas></section>
@@ -56,7 +56,9 @@ canvas{width:100%;height:auto;border-radius:22px;display:block;touch-action:none
   <section id="end" class="hidden">
     <p id="who"></p>
     <div class="big" id="final">0</div>
-    <p id="reward" style="margin:10px 0 16px"></p>
+    <p id="reward" style="margin:10px 0 8px"></p>
+    <p class="note" id="att" style="margin-bottom:14px"></p>
+    <button id="again" class="hidden" style="width:100%;margin-bottom:16px">Играть ещё раз</button>
     <div id="prize" class="hidden" style="display:flex;flex-direction:column;gap:12px">
       <div class="card">
         <p>Пришлите этот код нам в сообщения — начислим бонусы на вашу карту.</p>
@@ -67,33 +69,31 @@ canvas{width:100%;height:auto;border-radius:22px;display:block;touch-action:none
       <a class="btn alt hidden" id="wa" href="#" target="_blank" rel="noopener">Отправить в WhatsApp</a>
       <a class="btn alt hidden" id="tg" href="#" target="_blank" rel="noopener">Отправить в Telegram</a>
     </div>
-    <p class="note" style="margin-top:14px">Следующая игра — после нового визита.</p>
+    <p class="note" style="margin-top:14px">Новые попытки появятся после следующего визита.</p>
   </section>
 </main>
 
 <script>
 // ---- Настройки студии: поменяйте под себя ----
 const TIERS = [ // минимум волосков -> бонусы
-  {min: 50, bonus: 50},
-  {min: 100, bonus: 100},
-  {min: 200, bonus: 200},
-  {min: 300, bonus: 300},
-  {min: 400, bonus: 400},
-  {min: 500, bonus: 500}
+  {min: 50, bonus: 100},
+  {min: 100, bonus: 200},
+  {min: 200, bonus: 500}
 ];
+const MAX_ATTEMPTS = 5; // попыток на один код визита (засчитывается лучший результат)
 const INSTAGRAM = "k.tebe.teplo";
 const WHATSAPP = ""; // номер в формате 79001234567, если пусто — кнопка скрыта
 const TELEGRAM = "79871534246"; // номер для Telegram, без плюса
 // Коды визита: TEPLO01 ... TEPLO1000 (с любым числом нулей: TEPLO01000 тоже сработает).
-// Один код работает один раз на устройстве. Чтобы увеличить количество кодов, поменяйте число.
+// Каждый код даёт MAX_ATTEMPTS попыток на устройстве. Чтобы увеличить количество кодов, поменяйте число.
 const CODE_MAX = 1000;
 function parseCode(s){ const m = /^TEPLO0*(\d{1,5})$/.exec(s); const n = m ? +m[1] : 0; return n >= 1 && n <= CODE_MAX ? n : null; }
 // -----------------------------------------------
 
 const $ = id => document.getElementById(id);
 $('tiers').innerHTML = TIERS.map(t => `<div><span>от ${t.min} волосков</span><span>${t.bonus} бонусов</span></div>`).join('');
-function usedCodes(){ try { return JSON.parse(localStorage.getItem('kt_used') || '[]'); } catch(e){ return []; } }
-function markUsed(c){ try { const u = usedCodes(); u.push(c); localStorage.setItem('kt_used', JSON.stringify(u)); } catch(e){} }
+function getRec(c){ try { const all = JSON.parse(localStorage.getItem('kt_att') || '{}'); return all[c] || {n:0, best:0}; } catch(e){ return {n:0, best:0}; } }
+function setRec(c, r){ try { const all = JSON.parse(localStorage.getItem('kt_att') || '{}'); all[c] = r; localStorage.setItem('kt_att', JSON.stringify(all)); } catch(e){} }
 function show(id){ ['start','play','end'].forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 
 const cv = $('cv'), c = cv.getContext('2d');
@@ -109,10 +109,15 @@ function startGame(){
   const num = parseCode(code);
   if (!num) { $('err').textContent = 'Такого кода визита нет. Спросите у администратора.'; return; }
   const norm = 'TEPLO' + String(num).padStart(2, '0');
-  if (usedCodes().includes(norm)) { $('err').textContent = 'Этот код уже использован. Новый выдадим после визита.'; return; }
+  if (getRec(norm).n >= MAX_ATTEMPTS) { $('err').textContent = `Все ${MAX_ATTEMPTS} попыток по этому коду использованы. Новый код выдадим после визита.`; return; }
   $('err').textContent = '';
-  visit = norm; markUsed(norm);
+  visit = norm;
   name = $('name').value.trim() || 'Гостья';
+  begin();
+}
+
+function begin(){
+  const rec = getRec(visit); rec.n++; setRec(visit, rec);
   dist = 0; speed = 230; hairs = 0; gap = 320; py = 0; vy = 0; grounded = true; fell = false; items = []; pops = [];
   show('play'); running = true; last = performance.now();
   requestAnimationFrame(loop);
@@ -157,7 +162,7 @@ function update(dt){
     } else if (it.t === 'r' && !fell) {
       const rtop = it.h - 4;
       if (bx0 < it.x+it.w-4 && bx1 > it.x+4 && py < rtop) {
-        if (it.mv && vy < 0 && prev >= rtop-12) { it.dead = true; vy = 430; grounded = false; hairs += 2; pops.push({x:it.x, y:G-it.h-4, a:1, s:'+2'}); }
+        if (vy < 0 && prev >= rtop-12) { it.dead = true; vy = 430; grounded = false; hairs += 2; pops.push({x:it.x, y:G-it.h-4, a:1, s:'+2'}); }
         else { finish(); return; }
       }
     }
@@ -243,13 +248,20 @@ function loop(t){
 
 function finish(){
   running = false; draw();
-  const tier = [...TIERS].reverse().find(t => hairs >= t.min);
-  $('who').textContent = name + ', вы собрали волосков:';
+  const rec = getRec(visit); rec.best = Math.max(rec.best, hairs); setRec(visit, rec);
+  const best = rec.best, left = Math.max(0, MAX_ATTEMPTS - rec.n);
+  const tier = [...TIERS].reverse().find(t => best >= t.min);
+  const next = TIERS.find(t => best < t.min);
+  $('who').textContent = name + ', в этой попытке вы собрали волосков:';
   $('final').textContent = hairs;
-  $('reward').textContent = tier ? `Вы заработали ${tier.bonus} бонусов!` : `До первого бонуса не хватило ${TIERS[0].min - hairs}. Попробуйте после следующего визита.`;
+  $('reward').textContent = tier
+    ? `Лучший результат: ${best}. Бонусы: ${tier.bonus}.` + (next ? ` До ${next.bonus} бонусов не хватает ${next.min - best} волосков.` : ' Это максимальная награда!')
+    : `Лучший результат: ${best}. До ${TIERS[0].bonus} бонусов не хватает ${TIERS[0].min - best} волосков.`;
+  $('att').textContent = left ? `Осталось попыток: ${left} из ${MAX_ATTEMPTS}. Засчитывается лучший результат.` : 'Попытки закончились. Новые будут после следующего визита.';
+  $('again').classList.toggle('hidden', !left || !next);
   $('prize').classList.toggle('hidden', !tier);
   if (tier) {
-    const text = `${name} | ${hairs} волосков | ${visit}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+    const text = `${name} | ${best} волосков | ${visit}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
     $('code').textContent = text;
     $('insta').href = `https://instagram.com/${INSTAGRAM}`;
     if (TELEGRAM) { $('tg').classList.remove('hidden'); $('tg').href = `https://t.me/+${TELEGRAM}`; }
@@ -259,6 +271,7 @@ function finish(){
 }
 
 $('go').onclick = startGame;
+$('again').onclick = begin;
 $('copy').onclick = () => { try { navigator.clipboard.writeText($('code').textContent).then(() => { $('copy').textContent = 'Скопировано'; }); } catch(e){} };
 </script>
 </body>
