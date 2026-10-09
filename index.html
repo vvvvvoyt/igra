@@ -40,15 +40,14 @@ canvas{width:100%;height:auto;border-radius:22px;display:block;touch-action:none
     <p style="margin-top:16px">Девушка с лазером бежит сама. Касайтесь экрана или жмите пробел, чтобы прыгнуть. Собирайте волоски, запрыгивайте на ступеньки, перепрыгивайте канавы и бритвы. Любую бритву можно раздавить прыжком сверху: это +2 волоска.</p>
     <div class="card" style="margin-top:16px">
       <b>Бонусы за волоски</b>
-      <div class="tiers" id="tiers"></div>
+      <p style="margin-top:8px">1 волосок = 1 бонус = 1 рубль. Максимум за игру — 1000 бонусов.</p>
     </div>
     <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
       <input id="name" placeholder="Ваше имя" autocomplete="given-name">
-      <input id="visit" placeholder="Код визита (его даст администратор)" autocapitalize="characters" autocomplete="off">
       <div class="err" id="err" role="alert"></div>
       <button id="go">Бежать</button>
     </div>
-    <p class="note" style="margin-top:10px">5 попыток после каждого визита, засчитывается лучший результат.</p>
+    <p class="note" style="margin-top:10px">Играть можно сколько угодно раз.</p>
   </section>
 
   <section id="play" class="hidden"><canvas id="cv" width="360" height="480" aria-label="Игра: девушка с лазером бежит и собирает волоски"></canvas></section>
@@ -56,44 +55,29 @@ canvas{width:100%;height:auto;border-radius:22px;display:block;touch-action:none
   <section id="end" class="hidden">
     <p id="who"></p>
     <div class="big" id="final">0</div>
-    <p id="reward" style="margin:10px 0 8px"></p>
-    <p class="note" id="att" style="margin-bottom:14px"></p>
-    <button id="again" class="hidden" style="width:100%;margin-bottom:16px">Играть ещё раз</button>
-    <div id="prize" class="hidden" style="display:flex;flex-direction:column;gap:12px">
-      <div class="card">
-        <p>Пришлите этот код нам в сообщения — начислим бонусы на вашу карту.</p>
-        <div class="code" id="code" style="margin-top:10px"></div>
-      </div>
-      <button id="copy">Скопировать код</button>
-      <a class="btn alt" id="insta" href="#" target="_blank" rel="noopener">Отправить в Instagram</a>
-      <a class="btn alt hidden" id="wa" href="#" target="_blank" rel="noopener">Отправить в WhatsApp</a>
-      <a class="btn alt hidden" id="tg" href="#" target="_blank" rel="noopener">Отправить в Telegram</a>
+    <div class="card" style="margin:10px 0 14px">
+      <p id="reward"></p>
+      <p class="note" style="margin-top:6px">к тебе тепло · студия эпиляции</p>
     </div>
-    <p class="note" style="margin-top:14px">Новые попытки появятся после следующего визита.</p>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <p><b>Сделайте скриншот результата</b> и отправьте нам в Instagram или Telegram — начислим бонусы на вашу карту.</p>
+      </div>
+      <a class="btn alt" id="insta" href="#" target="_blank" rel="noopener">Отправить скрин в Instagram</a>
+      <a class="btn alt" id="tg" href="#" target="_blank" rel="noopener">Отправить скрин в Telegram</a>
+      <button id="again">Сыграть ещё раз</button>
+    </div>
   </section>
 </main>
 
 <script>
 // ---- Настройки студии: поменяйте под себя ----
-const TIERS = [ // минимум волосков -> бонусы
-  {min: 50, bonus: 100},
-  {min: 100, bonus: 200},
-  {min: 200, bonus: 500}
-];
-const MAX_ATTEMPTS = 5; // попыток на один код визита (засчитывается лучший результат)
+const MAX_BONUS = 1000; // 1 волосок = 1 бонус = 1 рубль, но не больше этого числа за игру
 const INSTAGRAM = "k.tebe.teplo";
-const WHATSAPP = ""; // номер в формате 79001234567, если пусто — кнопка скрыта
 const TELEGRAM = "79871534246"; // номер для Telegram, без плюса
-// Коды визита: TEPLO01 ... TEPLO1000 (с любым числом нулей: TEPLO01000 тоже сработает).
-// Каждый код даёт MAX_ATTEMPTS попыток на устройстве. Чтобы увеличить количество кодов, поменяйте число.
-const CODE_MAX = 1000;
-function parseCode(s){ const m = /^TEPLO0*(\d{1,5})$/.exec(s); const n = m ? +m[1] : 0; return n >= 1 && n <= CODE_MAX ? n : null; }
 // -----------------------------------------------
 
 const $ = id => document.getElementById(id);
-$('tiers').innerHTML = TIERS.map(t => `<div><span>от ${t.min} волосков</span><span>${t.bonus} бонусов</span></div>`).join('');
-function getRec(c){ try { const all = JSON.parse(localStorage.getItem('kt_att') || '{}'); return all[c] || {n:0, best:0}; } catch(e){ return {n:0, best:0}; } }
-function setRec(c, r){ try { const all = JSON.parse(localStorage.getItem('kt_att') || '{}'); all[c] = r; localStorage.setItem('kt_att', JSON.stringify(all)); } catch(e){} }
 function show(id){ ['start','play','end'].forEach(s => $(s).classList.toggle('hidden', s !== id)); }
 
 const cv = $('cv'), c = cv.getContext('2d');
@@ -105,19 +89,12 @@ cv.addEventListener('pointerdown', e => { e.preventDefault(); jump(); });
 addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); jump(); } });
 
 function startGame(){
-  const code = $('visit').value.trim().toUpperCase();
-  const num = parseCode(code);
-  if (!num) { $('err').textContent = 'Такого кода визита нет. Спросите у администратора.'; return; }
-  const norm = 'TEPLO' + String(num).padStart(2, '0');
-  if (getRec(norm).n >= MAX_ATTEMPTS) { $('err').textContent = `Все ${MAX_ATTEMPTS} попыток по этому коду использованы. Новый код выдадим после визита.`; return; }
   $('err').textContent = '';
-  visit = norm;
   name = $('name').value.trim() || 'Гостья';
   begin();
 }
 
 function begin(){
-  const rec = getRec(visit); rec.n++; setRec(visit, rec);
   dist = 0; speed = 230; hairs = 0; gap = 320; py = 0; vy = 0; grounded = true; fell = false; items = []; pops = [];
   show('play'); running = true; last = performance.now();
   requestAnimationFrame(loop);
@@ -248,31 +225,17 @@ function loop(t){
 
 function finish(){
   running = false; draw();
-  const rec = getRec(visit); rec.best = Math.max(rec.best, hairs); setRec(visit, rec);
-  const best = rec.best, left = Math.max(0, MAX_ATTEMPTS - rec.n);
-  const tier = [...TIERS].reverse().find(t => best >= t.min);
-  const next = TIERS.find(t => best < t.min);
-  $('who').textContent = name + ', в этой попытке вы собрали волосков:';
+  const bonus = Math.min(hairs, MAX_BONUS);
+  $('who').textContent = name + ', вы собрали волосков:';
   $('final').textContent = hairs;
-  $('reward').textContent = tier
-    ? `Лучший результат: ${best}. Бонусы: ${tier.bonus}.` + (next ? ` До ${next.bonus} бонусов не хватает ${next.min - best} волосков.` : ' Это максимальная награда!')
-    : `Лучший результат: ${best}. До ${TIERS[0].bonus} бонусов не хватает ${TIERS[0].min - best} волосков.`;
-  $('att').textContent = left ? `Осталось попыток: ${left} из ${MAX_ATTEMPTS}. Засчитывается лучший результат.` : 'Попытки закончились. Новые будут после следующего визита.';
-  $('again').classList.toggle('hidden', !left || !next);
-  $('prize').classList.toggle('hidden', !tier);
-  if (tier) {
-    const text = `${name} | ${best} волосков | ${visit}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
-    $('code').textContent = text;
-    $('insta').href = `https://instagram.com/${INSTAGRAM}`;
-    if (TELEGRAM) { $('tg').classList.remove('hidden'); $('tg').href = `https://t.me/+${TELEGRAM}`; }
-    if (WHATSAPP) { $('wa').classList.remove('hidden'); $('wa').href = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent('Мой код из игры: ' + text)}`; }
-  }
+  $('reward').textContent = `Ваш выигрыш: ${bonus} бонусов (${bonus} ₽)` + (hairs > MAX_BONUS ? `. Максимум за игру — ${MAX_BONUS}.` : '.');
+  $('insta').href = `https://ig.me/m/${INSTAGRAM}`;
+  $('tg').href = `https://t.me/+${TELEGRAM}`;
   setTimeout(() => show('end'), 700);
 }
 
 $('go').onclick = startGame;
 $('again').onclick = begin;
-$('copy').onclick = () => { try { navigator.clipboard.writeText($('code').textContent).then(() => { $('copy').textContent = 'Скопировано'; }); } catch(e){} };
 </script>
 </body>
 </html>
